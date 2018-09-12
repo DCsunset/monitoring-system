@@ -1,8 +1,9 @@
-from flask import Flask, request, make_response, send_from_directory, abort
+from flask import Flask, request, make_response, send_from_directory, abort, Response
 import jwt
 import json
 from auth import auth
 import userdb
+from video import Video
 
 # For jwt
 key = 'lknawevuiasodnv'
@@ -18,12 +19,22 @@ def index():
 def static_assets(path):
     return send_from_directory('public/static', path)
 
-@app.route('/api/system', methods=['GET'])
-def system():
+@app.route('/api/video', methods=['GET'])
+def getVideo():
     # Authorize first
     token = request.cookies.get('token')
     if not auth(token):
         abort(403)
+
+    # generator
+    def generate_frame(video):
+        while True:
+            frame = video.get_frame()
+            yield b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + frame + b'\r\n\r\n'
+
+    # Streaming contents
+    video = Video()
+    return Response(generate_frame(video), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 @app.route('/api/login', methods=['POST'])
 def login():
