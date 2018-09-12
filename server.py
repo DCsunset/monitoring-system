@@ -18,6 +18,13 @@ def index():
 def static_assets(path):
     return send_from_directory('public/static', path)
 
+@app.route('/api/system', methods=['GET'])
+def system():
+    # Authorize first
+    token = request.cookies.get('token')
+    if not auth(token):
+        abort(403)
+
 @app.route('/api/login', methods=['POST'])
 def login():
     data = request.get_json()
