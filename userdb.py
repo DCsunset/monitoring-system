@@ -31,3 +31,10 @@ class userdb:
             return True
         else:
             return False
+
+    def change(self, username, password):
+        conn = sqlite3.connect(self.db)
+        c = conn.cursor()
+        c.execute('UPDATE users SET password = ? WHERE username = ? ', (password, username))
+        conn.commit()
+

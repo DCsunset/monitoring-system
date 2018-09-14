@@ -4,6 +4,7 @@ import json
 from auth import auth
 import userdb
 from video import Video
+from recognize_face import recognize
 
 # For jwt
 key = 'lknawevuiasodnv'
@@ -12,8 +13,7 @@ app = Flask(__name__, static_url_path='')
 db = userdb.userdb('users.db')
 
 system_video = None
-rstp_video = None
-rstp_options = None
+rtsp_video = None
 
 @app.route('/', methods=['GET'])
 def index():
@@ -37,39 +37,45 @@ def systemVideo():
     # generator
     def generate_frame(video):
         while True:
-            frame = video.get_frame()
+            frame = Video.encode_frame(recognize(0, video.get_frame()))
             yield b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + frame + b'\r\n\r\n'
 
     # Streaming contents
     return Response(generate_frame(system_video), mimetype='multipart/x-mixed-replace; boundary=frame')
 
-@app.route('/api/video/rstp', methods=['GET', 'POST'])
-def rstpVideo():
+@app.route('/api/video/rtsp', methods=['GET', 'POST'])
+def rtspVideo():
     # Authorize first
     token = request.cookies.get('token')
     if not auth(token):
         abort(403)
 
-    global rstp_video
-    global rstp_options
+    global rtsp_video
 
     if request.method == 'GET':
-        if not rstp_options:
-            return 'Configure RSTP first'
-        if not rstp_video:
-            rstp_video = Video(rstp_options)
+        if not rtsp_video:
+            return 'Configure RTSP first'
 
         # generator
         def generate_frame(video):
             while True:
-                frame = video.get_frame()
+                frame = Video.encode_frame(recognize(1, video.get_frame()))
                 yield b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + frame + b'\r\n\r\n'
 
         # Streaming contents
-        return Response(generate_frame(rstp_video), mimetype='multipart/x-mixed-replace; boundary=frame')
+        return Response(generate_frame(rtsp_video), mimetype='multipart/x-mixed-replace; boundary=frame')
+
     elif request.method == 'POST':
-        rstp_options = request.get_json()
-        return json.dumps({ 'success': True })
+        rtsp_options = request.get_json()
+        try:
+            rtsp_video = Video(rtsp_options)
+            if rtsp_video.video.isOpened():
+                return json.dumps({ 'success': True })
+            else:
+                return json.dumps({ 'success': False, 'data': 'Connection failed' })
+        except:
+            return json.dumps({ 'success': False, 'data': 'Connection failed' })
+
 
     return json.dumps({ 'success': False })
 
@@ -101,6 +107,17 @@ def logout():
     resp = make_response(json.dumps({ 'success': True }))
     resp.set_cookie('token', '', expires=0)
     return resp
+
+@app.route('/api/user/change', methods=['POST'])
+def change():
+    data = request.get_json()
+
+    token = request.cookies.get('token')
+    if token and data['password']:
+        user = jwt.decode(token, key, algorithm='HS256')['user']
+        db.change(user, data['password'])
+        return json.dumps({ 'success': True })
+    return json.dumps({ 'success': False })
 
 @app.route('/api/user', methods=['GET'])
 def get_user():
