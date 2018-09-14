@@ -11,6 +11,10 @@ key = 'lknawevuiasodnv'
 app = Flask(__name__, static_url_path='')
 db = userdb.userdb('users.db')
 
+system_video = None
+rstp_video = None
+rstp_options = None
+
 @app.route('/', methods=['GET'])
 def index():
     return send_from_directory('public', 'index.html')
@@ -19,12 +23,16 @@ def index():
 def static_assets(path):
     return send_from_directory('public/static', path)
 
-@app.route('/api/video', methods=['GET'])
-def getVideo():
+@app.route('/api/video/system', methods=['GET'])
+def systemVideo():
     # Authorize first
     token = request.cookies.get('token')
     if not auth(token):
         abort(403)
+
+    global system_video
+    if not system_video:
+        system_video = Video()
 
     # generator
     def generate_frame(video):
@@ -33,8 +41,37 @@ def getVideo():
             yield b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + frame + b'\r\n\r\n'
 
     # Streaming contents
-    video = Video()
-    return Response(generate_frame(video), mimetype='multipart/x-mixed-replace; boundary=frame')
+    return Response(generate_frame(system_video), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+@app.route('/api/video/rstp', methods=['GET', 'POST'])
+def rstpVideo():
+    # Authorize first
+    token = request.cookies.get('token')
+    if not auth(token):
+        abort(403)
+
+    global rstp_video
+    global rstp_options
+
+    if request.method == 'GET':
+        if not rstp_options:
+            return 'Configure RSTP first'
+        if not rstp_video:
+            rstp_video = Video(rstp_options)
+
+        # generator
+        def generate_frame(video):
+            while True:
+                frame = video.get_frame()
+                yield b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + frame + b'\r\n\r\n'
+
+        # Streaming contents
+        return Response(generate_frame(rstp_video), mimetype='multipart/x-mixed-replace; boundary=frame')
+    elif request.method == 'POST':
+        rstp_options = request.get_json()
+        return json.dumps({ 'success': True })
+
+    return json.dumps({ 'success': False })
 
 @app.route('/api/login', methods=['POST'])
 def login():
@@ -76,3 +113,4 @@ def get_user():
             pass
     return json.dumps({ 'success': False })
 
+app.run('0.0.0.0', 5000)
